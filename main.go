@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,7 +22,9 @@ type post struct {
 	Title, Author, Body   string
 	Date, Lastmod         string
 	Subtitle, Description string
-	Canonical             string
+	Canonical, FullURL    string
+	Images                []string
+	Tags                  []string
 	Draft                 bool
 	IsComment             bool
 }
@@ -73,6 +76,16 @@ func main() {
 			fmt.Printf("Ignoring (empty) %s\n", f.Name())
 			continue
 		}
+
+		if post.Draft == false {
+			//if we have the URL we can fetch the Tags
+			//which are not included in the export html :(
+			post.Tags, err = getTagsFor(post.FullURL)
+			if err != nil {
+				fmt.Printf("error tags: %s\n", err)
+			}
+		}
+
 		prefix := "draft_"
 		if post.Draft == false {
 			//datetime ISO 2018-09-25T14:13:46.823Z
@@ -110,11 +123,11 @@ func process(doc *goquery.Document) (p post, err error) {
 
 	tmp := doc.Find(".p-summary[data-field='subtitle']")
 	if tmp != nil {
-		p.Subtitle = tmp.Text()
+		p.Subtitle = strings.TrimSpace(tmp.Text())
 	}
 	tmp = doc.Find(".p-summary[data-field='description']")
 	if tmp != nil {
-		p.Description = tmp.Text()
+		p.Description = strings.TrimSpace(tmp.Text())
 	}
 
 	//if there are no subtitle and description we presume that it is a comment
@@ -124,22 +137,41 @@ func process(doc *goquery.Document) (p post, err error) {
 
 	tmp = doc.Find(".p-canonical")
 	if tmp != nil {
+		var exists bool
 		//https://coder.today/a-b-tests-developers-manual-f57f5c1a492
-		canonicalUrl, exists := tmp.Attr("href")
-		if exists && len(canonicalUrl) > 0 {
-			pieces := strings.Split(canonicalUrl, "/")
+		p.FullURL, exists = tmp.Attr("href")
+		if exists && len(p.FullURL) > 0 {
+			pieces := strings.Split(p.FullURL, "/")
 			if len(pieces) > 2 {
 				//a-b-tests-developers-manual-f57f5c1a492
-				canonicalUrl = pieces[len(pieces)-1] //we only need the last part
+				p.Canonical = pieces[len(pieces)-1] //we only need the last part
 			}
 		}
-		p.Canonical = canonicalUrl
 	}
+
+	//fix the big previews boxes for URLS, we don't need the description and other stuff
+	//html2md cannot handle them (is a div of <a> that contains <strong><br><em>...)
+	doc.Find(".graf .markup--mixtapeEmbed-anchor").Each(func(i int, link *goquery.Selection) {
+		title := link.Find("strong")
+		if title == nil {
+			return
+		}
+		//remove the <strong> <br> and <em>
+		link.Empty()
+
+		link.SetText(strings.TrimSpace(title.Text()))
+	})
+	//remove the empty URLs (which is the thumbnail on medium)
+	doc.Find(".graf a.mixtapeImage").Each(func(i int, selection *goquery.Selection) {
+		selection.Remove()
+	})
+	//RemoveFiltered does not work!
+	//doc.RemoveFiltered(".graf a.mixtapeImage")
 
 	body := ""
 	doc.Find("div.section-inner").Each(func(i int, s *goquery.Selection) {
 		h, _ := s.Html()
-		body += html2md.Convert(h)
+		body += html2md.Convert(strings.TrimSpace(h))
 	})
 	body = strings.Map(nbsp, body)
 
@@ -199,14 +231,38 @@ title: "{{ .Title }}"
 author: "{{ .Author }}"
 date: {{ .Date }}
 lastmod: {{ .Lastmod }}
-
 {{ if eq .Draft true }}draft: {{ .Draft }}{{end}}
 description: "{{ .Description }}"
+subtitle: "{{ .Subtitle }}"
+{{ if .Tags }}tags:
+{{ range .Tags }} - {{.}} 
+{{end}}{{end}}
+{{ if .Images }}images:
+{{ range .Images }} - {{.}} 
+{{end}}{{end}}
 slug: "{{ .Canonical }}"
-aliases: [
-    - "{{ .Canonical }}""
-]
+aliases:
+    - "/{{ .Canonical }}"
 ---
 
 {{ .Body }}
 `))
+
+func getTagsFor(url string) ([]string, error) {
+	//TODO make a custom client with a small timeout!
+	res, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	res.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	var result []string
+	//fmt.Printf("%s", doc.Text())
+	doc.Find("ul.tags>li>a").Each(func(i int, selection *goquery.Selection) {
+		result = append(result, selection.Text())
+	})
+	return result, nil
+}
