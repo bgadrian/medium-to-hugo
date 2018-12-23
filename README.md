@@ -4,10 +4,12 @@ Tool for the migration of articles from a medium.com account to a static website
 ## Features:
 * transform HTML posts to markdown
 * ignores comments and empty articles
+* SEO friendly (keeps the old URL as an **alias**)
 * keeps all the metadata and adds most Hugo front Matter, including the alias with the old URL
 * even if one article fails it keeps going
-* marks the drafts as "draft_"
-* Fetch the article TAGS (which are not included in the Medium exporter)
+* marks the **drafts** as "draft_"
+* Fetch the article **TAGS** (which are not included in the Medium exporter)
+* Fetch all the **Images** and puts them in each articles bundle
 
 ## Usage 
 

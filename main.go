@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,8 +15,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/lunny/html2md"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 type post struct {
@@ -23,25 +25,35 @@ type post struct {
 	Date, Lastmod         string
 	Subtitle, Description string
 	Canonical, FullURL    string
+	FeaturedImage         string
 	Images                []string
 	Tags                  []string
+	HddFolder             string
 	Draft                 bool
 	IsComment             bool
 }
 
 func main() {
 
-	if len(os.Args) != 3 {
-		fmt.Println("usage: path/to/medium-export-folder/posts/ path/to/hugo/content")
+	if len(os.Args) != 4 {
+		fmt.Println("usage: path/to/medium-export-folder/posts/ path/to/hugo/content/ content-type")
+		fmt.Println("example: ./mediumtohugo ~/Downloads/medium/posts/ /srv/go/myblog/ posts")
 		os.Exit(1)
 	}
 	// Location of exported, unzipped Medium HTML files
-	var src = os.Args[1] // "/Users/mwsherman/medium-export"
+	var postsHTMLFolder = os.Args[1]
 
 	// Destination for Markdown files, perhaps the content folder for Hugo or Jekyll
-	var dest = os.Args[2] //"/Users/mwsherman/tmp"
+	var hugoContentFolder = os.Args[2] + "/"
 
-	files, err := ioutil.ReadDir(src)
+	var hugoContentType = os.Args[3]
+
+	files, err := ioutil.ReadDir(postsHTMLFolder)
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.MkdirAll(hugoContentFolder, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
@@ -54,49 +66,34 @@ func main() {
 			continue
 		}
 
-		inpath := filepath.Join(src, f.Name())
+		inpath := filepath.Join(postsHTMLFolder, f.Name())
 		doc, err := read(inpath)
 		if err != nil {
 			log.Println("Error: ", err)
 			continue
 		}
-		post, err := process(doc)
+
+		cleanupDoc(doc)
+		post, err := process(doc, f, hugoContentFolder, hugoContentType)
 		if err != nil {
 			log.Println("Error: ", err)
 			continue
 		}
-		post.Draft = strings.HasPrefix(f.Name(), "draft_")
 
-		if post.IsComment {
+		if post.Draft == false && post.IsComment {
 			fmt.Printf("Ignoring (comment) %s\n", f.Name())
 			continue
 		}
 
+		fmt.Printf("Processing %s => %s\n", f.Name(), post.HddFolder)
+
+		outpath := post.HddFolder + "index.md"
+		post.Body = docToMarkdown(doc)
 		if len(post.Title) == 0 || len(post.Body) == 0 {
 			fmt.Printf("Ignoring (empty) %s\n", f.Name())
 			continue
 		}
 
-		if post.Draft == false {
-			//if we have the URL we can fetch the Tags
-			//which are not included in the export html :(
-			post.Tags, err = getTagsFor(post.FullURL)
-			if err != nil {
-				fmt.Printf("error tags: %s\n", err)
-			}
-		}
-
-		prefix := "draft_"
-		if post.Draft == false {
-			//datetime ISO 2018-09-25T14:13:46.823Z
-			//we only keep the date for simplicity
-			pieces := strings.Split(post.Date, "T")
-			prefix = pieces[0]
-		}
-
-		outpath := fmt.Sprintf("%s/%s_%s.md", dest, prefix, slug(post.Title))
-
-		fmt.Printf("Processing %s => %s\n", f.Name(), outpath)
 		write(post, outpath)
 	}
 }
@@ -108,7 +105,7 @@ func nbsp(r rune) rune {
 	return r
 }
 
-func process(doc *goquery.Document) (p post, err error) {
+func process(doc *goquery.Document, f os.FileInfo, contentFolder, contentType string) (p post, err error) {
 	defer func() {
 		if mypanic := recover(); mypanic != nil {
 			err = mypanic.(error)
@@ -130,10 +127,9 @@ func process(doc *goquery.Document) (p post, err error) {
 		p.Description = strings.TrimSpace(tmp.Text())
 	}
 
-	//if there are no subtitle and description we presume that it is a comment
-	//to another story. Medium treats comments/replies as posts
-	//I presume you do not want the comments as posts
-	p.IsComment = len(p.Subtitle) == 0 && len(p.Description) == 0
+	//Medium treats comments/replies as posts
+	//I presume you do not want the comments as posts so I try to filter them out
+	p.IsComment = doc.Find(".aspectRatioPlaceholder").Length() == 0
 
 	tmp = doc.Find(".p-canonical")
 	if tmp != nil {
@@ -149,6 +145,61 @@ func process(doc *goquery.Document) (p post, err error) {
 		}
 	}
 
+	p.Draft = strings.HasPrefix(f.Name(), "draft_")
+
+	if p.Draft == false {
+		//if we have the URL we can fetch the Tags
+		//which are not included in the export html :(
+		p.Tags, err = getTagsFor(p.FullURL)
+		if err != nil {
+			fmt.Printf("error tags: %s\n", err)
+		}
+	}
+	//datetime ISO 2018-09-25T14:13:46.823Z
+	//we only keep the date for simplicity
+	pieces := strings.Split(p.Date, "T")
+	createdDate := pieces[0]
+
+	prefix := "draft_"
+	if p.Draft == false {
+		prefix = createdDate
+	}
+
+	// hugo/content/article_title/*
+	pageBundle := prefix + "_" + slug(p.Title)
+	p.HddFolder = fmt.Sprintf("%s%s/%s/", contentFolder, contentType, pageBundle)
+	os.RemoveAll(p.HddFolder) //make sure does not exists
+	err = os.Mkdir(p.HddFolder, os.ModePerm)
+	if err != nil {
+		fmt.Printf("error post folder: %s\n", err)
+		return
+	}
+	p.Images, p.FeaturedImage, err = fetchAndReplaceImages(doc, p.HddFolder, contentType, pageBundle)
+
+	//fallback, the featured image is the first one
+	if len(p.FeaturedImage) == 0 && len(p.Images) > 0 {
+		p.FeaturedImage = p.Images[0]
+	}
+
+	if err != nil {
+		fmt.Printf("error images folder: %s\n", err)
+	}
+
+	return
+}
+
+func docToMarkdown(doc *goquery.Document) string {
+	body := ""
+	doc.Find("div.section-inner").Each(func(i int, s *goquery.Selection) {
+		h, _ := s.Html()
+		body += html2md.Convert(strings.TrimSpace(h))
+	})
+	body = strings.Map(nbsp, body)
+
+	return strings.TrimSpace(body)
+}
+
+func cleanupDoc(doc *goquery.Document) {
 	//fix the big previews boxes for URLS, we don't need the description and other stuff
 	//html2md cannot handle them (is a div of <a> that contains <strong><br><em>...)
 	doc.Find(".graf .markup--mixtapeEmbed-anchor").Each(func(i int, link *goquery.Selection) {
@@ -168,21 +219,13 @@ func process(doc *goquery.Document) (p post, err error) {
 	//RemoveFiltered does not work!
 	//doc.RemoveFiltered(".graf a.mixtapeImage")
 
-	body := ""
-	doc.Find("div.section-inner").Each(func(i int, s *goquery.Selection) {
-		h, _ := s.Html()
-		body += html2md.Convert(strings.TrimSpace(h))
+	//remove the TITLE, it is already as metadata in the markdown
+	doc.Find("h3.graf--title").Each(func(i int, selection *goquery.Selection) {
+		selection.Remove()
 	})
-	body = strings.Map(nbsp, body)
-
-	redundant := fmt.Sprintf("### %s", p.Title) // post body shouldn't repeat the title
-
-	if strings.HasPrefix(body, redundant) {
-		body = body[len(redundant):]
-	}
-	p.Body = strings.TrimSpace(body)
-
-	return
+	doc.Find("h1").Each(func(i int, selection *goquery.Selection) {
+		selection.Remove()
+	})
 }
 
 func read(path string) (*goquery.Document, error) {
@@ -233,14 +276,16 @@ date: {{ .Date }}
 lastmod: {{ .Lastmod }}
 {{ if eq .Draft true }}draft: {{ .Draft }}{{end}}
 description: "{{ .Description }}"
+
 subtitle: "{{ .Subtitle }}"
 {{ if .Tags }}tags:
 {{ range .Tags }} - {{.}} 
 {{end}}{{end}}
+{{ if .FeaturedImage }}image: "{{.FeaturedImage}}" {{end}}
 {{ if .Images }}images:
-{{ range .Images }} - {{.}} 
+{{ range .Images }} - "{{.}}" 
 {{end}}{{end}}
-slug: "{{ .Canonical }}"
+
 aliases:
     - "/{{ .Canonical }}"
 ---
@@ -265,4 +310,77 @@ func getTagsFor(url string) ([]string, error) {
 		result = append(result, selection.Text())
 	})
 	return result, nil
+}
+
+func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundle string) ([]string, string, error) {
+	images := doc.Find("img")
+	if images.Length() == 0 {
+		return nil, "", nil
+	}
+
+	diskImagesFolder := folder + "images/"
+	err := os.Mkdir(diskImagesFolder, os.ModePerm)
+	if err != nil {
+		return nil, "", fmt.Errorf("error images folder: %s\n", err)
+	}
+
+	var index int
+	var featuredImage string
+	var result []string
+
+	images.Each(func(i int, imgDomElement *goquery.Selection) {
+		index++
+		original, has := imgDomElement.Attr("src")
+		if has == false {
+			fmt.Print("warning img no src\n")
+			return
+		}
+
+		pieces := strings.Split(original, ".")
+		ext := pieces[len(pieces)-1]
+		filename := fmt.Sprintf("%d.%s", index, ext)
+		url := fmt.Sprintf("/%s/%s/images/%s", contentType, pageBundle, filename)
+		diskPath := fmt.Sprintf("%s%s", diskImagesFolder, filename)
+
+		err := DownloadFile(original, diskPath)
+		if err != nil {
+			fmt.Printf("error image: %s\n", err)
+			return
+		}
+		//we presume that folder is the hugo/static/img folder
+		imgDomElement.SetAttr("src", url)
+		fmt.Printf("saved image %s => %s\n", original, diskPath)
+
+		result = append(result, url)
+		if _, isFeatured := imgDomElement.Attr("data-is-featured"); isFeatured {
+			featuredImage = url
+		}
+	})
+	return result, featuredImage, nil
+}
+
+// DownloadFile will download a url to a local file. It's efficient because it will
+// write as it downloads and not load the whole file into memory.
+func DownloadFile(url, filepath string) error {
+	// Create the file
+	out, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
