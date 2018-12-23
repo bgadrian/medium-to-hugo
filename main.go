@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -69,19 +68,21 @@ func main() {
 		inpath := filepath.Join(postsHTMLFolder, f.Name())
 		doc, err := read(inpath)
 		if err != nil {
-			log.Println("Error: ", err)
+			fmt.Println("Error read html: ", err)
 			continue
 		}
 
 		cleanupDoc(doc)
 		post, err := process(doc, f, hugoContentFolder, hugoContentType)
 		if err != nil {
-			log.Println("Error: ", err)
+			fmt.Println("Error process: ", err)
+			os.RemoveAll(post.HddFolder)
 			continue
 		}
 
 		if post.Draft == false && post.IsComment {
 			fmt.Printf("Ignoring (comment) %s\n", f.Name())
+			os.RemoveAll(post.HddFolder)
 			continue
 		}
 
@@ -91,6 +92,7 @@ func main() {
 		post.Body = docToMarkdown(doc)
 		if len(post.Title) == 0 || len(post.Body) == 0 {
 			fmt.Printf("Ignoring (empty) %s\n", f.Name())
+			os.RemoveAll(post.HddFolder)
 			continue
 		}
 
@@ -128,7 +130,6 @@ func process(doc *goquery.Document, f os.FileInfo, contentFolder, contentType st
 	}
 
 	//Medium treats comments/replies as posts
-	//I presume you do not want the comments as posts so I try to filter them out
 	p.IsComment = doc.Find(".aspectRatioPlaceholder").Length() == 0
 
 	tmp = doc.Find(".p-canonical")
@@ -153,6 +154,7 @@ func process(doc *goquery.Document, f os.FileInfo, contentFolder, contentType st
 		p.Tags, err = getTagsFor(p.FullURL)
 		if err != nil {
 			fmt.Printf("error tags: %s\n", err)
+			err = nil
 		}
 	}
 	//datetime ISO 2018-09-25T14:13:46.823Z
@@ -166,23 +168,27 @@ func process(doc *goquery.Document, f os.FileInfo, contentFolder, contentType st
 	}
 
 	// hugo/content/article_title/*
-	pageBundle := prefix + "_" + slug(p.Title)
+	slug := slug(p.Title)
+	if len(slug) == 0 {
+		slug = "noname_" + p.Date
+	}
+	pageBundle := prefix + "_" + slug
 	p.HddFolder = fmt.Sprintf("%s%s/%s/", contentFolder, contentType, pageBundle)
 	os.RemoveAll(p.HddFolder) //make sure does not exists
 	err = os.Mkdir(p.HddFolder, os.ModePerm)
 	if err != nil {
-		fmt.Printf("error post folder: %s\n", err)
+		err = fmt.Errorf("error post folder: %s", err)
 		return
 	}
 	p.Images, p.FeaturedImage, err = fetchAndReplaceImages(doc, p.HddFolder, contentType, pageBundle)
 
+	if err != nil {
+		err = fmt.Errorf("error images folder: %s", err)
+	}
+
 	//fallback, the featured image is the first one
 	if len(p.FeaturedImage) == 0 && len(p.Images) > 0 {
 		p.FeaturedImage = p.Images[0]
-	}
-
-	if err != nil {
-		fmt.Printf("error images folder: %s\n", err)
 	}
 
 	return
