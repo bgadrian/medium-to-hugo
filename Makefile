@@ -5,9 +5,6 @@ pre:
 	mkdir -p ./build/
 	env GO111MODULE=on go get -d ./
 
-run: pre
-	go run $(source) $(src) $(dest)
-
 build: pre
 	go build -o ./build/binary $(source)
 
