@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,7 +14,6 @@ import (
 	"strings"
 	"text/template"
 	"time"
-	"crypto/tls"
 
 	"github.com/lunny/html2md"
 
