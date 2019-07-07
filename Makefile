@@ -1,9 +1,11 @@
 # Makefile
 source := main.go
 
+export GO111MODULE = on
+
 pre:
 	mkdir -p ./build/
-	env GO111MODULE=on go get -d ./
+	go get -d ./
 
 build: pre
 	go build -o ./build/binary $(source)
