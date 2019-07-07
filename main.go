@@ -13,6 +13,7 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"crypto/tls"
 
 	"github.com/lunny/html2md"
 
@@ -304,7 +305,13 @@ aliases:
 
 func getTagsFor(url string) ([]string, error) {
 	//TODO make a custom client with a small timeout!
-	res, err := http.Get(url)
+	skipTLS := os.Getenv("ALLOW_INSECURE") == "true"
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLS},
+	}
+	client := &http.Client{Transport: tr}
+
+	res, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
