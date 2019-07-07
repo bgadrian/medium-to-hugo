@@ -43,7 +43,10 @@ func main() {
 	var postsHTMLFolder = os.Args[1]
 
 	// Destination for Markdown files, perhaps the content folder for Hugo or Jekyll
-	var hugoContentFolder = os.Args[2] + "/"
+	var hugoContentFolder = os.Args[2]
+	if !strings.HasSuffix(hugoContentFolder, "/") {
+		hugoContentFolder += "/"
+	}
 
 	var hugoContentType = os.Args[3]
 
@@ -175,7 +178,7 @@ func process(doc *goquery.Document, f os.FileInfo, contentFolder, contentType st
 	pageBundle := prefix + "_" + slug
 	p.HddFolder = fmt.Sprintf("%s%s/%s/", contentFolder, contentType, pageBundle)
 	os.RemoveAll(p.HddFolder) //make sure does not exists
-	err = os.Mkdir(p.HddFolder, os.ModePerm)
+	err = os.MkdirAll(p.HddFolder, os.ModePerm)
 	if err != nil {
 		err = fmt.Errorf("error post folder: %s", err)
 		return
