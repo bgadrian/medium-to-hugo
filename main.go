@@ -289,11 +289,11 @@ description: "{{ .Description }}"
 
 subtitle: "{{ .Subtitle }}"
 {{ if .Tags }}tags:
-{{ range .Tags }} - {{.}} 
+{{ range .Tags }} - {{.}}
 {{end}}{{end}}
 {{ if .FeaturedImage }}image: "{{.FeaturedImage}}" {{end}}
 {{ if .Images }}images:
-{{ range .Images }} - "{{.}}" 
+{{ range .Images }} - "{{.}}"
 {{end}}{{end}}
 
 aliases:
@@ -305,7 +305,7 @@ aliases:
 
 func getTagsFor(url string) ([]string, error) {
 	//TODO make a custom client with a small timeout!
-	skipTLS := os.Getenv("ALLOW_INSECURE") == "true"
+	skipTLS := strings.ToLower(os.Getenv("ALLOW_INSECURE")) == "true"
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLS},
 	}
