@@ -1,4 +1,4 @@
-# Medium to Hugo 
+# Medium to Hugo
 Tool for the migration of articles from a medium.com account to a static website generator with markdown like Hugo.
 
 Here is a preview from my own migration (from medium to Hugo):
@@ -17,12 +17,14 @@ Here is a preview from my own migration (from medium to Hugo):
 * custom `.Params`: image, images, slug, subtitle
 * minimal HTML cleanup (removed empty URLs, duplicate title and so on)
 
-## Usage 
+## Usage
 
 1. Download your [medium data](https://help.medium.com/hc/en-us/articles/115004745787-Download-your-information)
 2. Unzip it
 3. Download our binary (see Releases)
 4. Run something like `./mediumtohugo /path/to/export/posts /path/to/hugo/content/ posts`
+
+In case you need to bypass TLS/SSL checks you can run the binary with `ALLOW_INSECURE=true` environment variable. This is a case if the medium certificate expires and you want to export your blog with all tags.
 
 
 ### Build / Contribute
