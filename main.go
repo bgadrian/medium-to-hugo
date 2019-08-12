@@ -357,7 +357,6 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 			ext = ".jpg"
 		}
 		filename := fmt.Sprintf("%d%s", index, ext)
-		url := fmt.Sprintf("/%s/%s/images/%s", contentType, pageBundle, filename)
 		diskPath := fmt.Sprintf("%s%s", diskImagesFolder, filename)
 
 		err := DownloadFile(original, diskPath)
@@ -366,7 +365,10 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 			return
 		}
 		//we presume that folder is the hugo/static/img folder
-		imgDomElement.SetAttr("src", url)
+		url := fmt.Sprintf("/%s/%s/images/%s", contentType, pageBundle, filename)
+		// the suffix after # is useful for styling the image in a way similar to what medium does
+		imageSrcAttr := fmt.Sprintf("%s#%s", url, extractMediumImageStyle(imgDomElement))
+		imgDomElement.SetAttr("src", imageSrcAttr)
 		fmt.Printf("saved image %s => %s\n", original, diskPath)
 
 		result = append(result, url)
@@ -375,6 +377,17 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 		}
 	})
 	return result, featuredImage, nil
+}
+
+func extractMediumImageStyle(imgDomElement *goquery.Selection) (mediumImageStyle string) {
+	imageStyles := imgDomElement.ParentsUntil("figure.graf").Parent().AttrOr("class", "")
+	rule, _ := regexp.Compile("graf--(layout\\w+)")
+	foundStyles := rule.FindStringSubmatch(imageStyles)
+	mediumImageStyle = "layoutDefault"
+	if len(foundStyles) > 1 {
+		mediumImageStyle = foundStyles[1]
+	}
+	return
 }
 
 // DownloadFile will download a url to a local file. It's efficient because it will
