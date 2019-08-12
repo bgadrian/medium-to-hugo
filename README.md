@@ -16,6 +16,7 @@ Here is a preview from my own migration (from medium to Hugo):
 * stories are ordered by date (`year-month-day_slug`)
 * custom `.Params`: image, images, slug, subtitle
 * minimal HTML cleanup (removed empty URLs, duplicate title and so on)
+* adds `#layout...` suffix to every image so they can be styles accordingly from plain CSS with exactly same style as on Medium.
 
 ## Usage
 
