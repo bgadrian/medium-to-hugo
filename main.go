@@ -352,9 +352,11 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 			return
 		}
 
-		pieces := strings.Split(original, ".")
-		ext := pieces[len(pieces)-1]
-		filename := fmt.Sprintf("%d.%s", index, ext)
+		ext := filepath.Ext(original)
+		if len(ext) == 0 {
+			ext = ".jpg"
+		}
+		filename := fmt.Sprintf("%d%s", index, ext)
 		url := fmt.Sprintf("/%s/%s/images/%s", contentType, pageBundle, filename)
 		diskPath := fmt.Sprintf("%s%s", diskImagesFolder, filename)
 
