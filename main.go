@@ -353,7 +353,7 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 		}
 
 		ext := filepath.Ext(original)
-		if len(ext) == 0 {
+		if len(ext) < 2 {
 			ext = ".jpg"
 		}
 		filename := fmt.Sprintf("%d%s", index, ext)
@@ -379,14 +379,15 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 	return result, featuredImage, nil
 }
 
+var mediumImageLayout = regexp.MustCompile(`graf--(layout\w+)`)
+
 func extractMediumImageStyle(imgDomElement *goquery.Selection) (mediumImageStyle string) {
 	figure := imgDomElement.ParentsUntil("figure.graf").Parent()
 	imageStyles := figure.AttrOr("class", "")
-	rule, _ := regexp.Compile("graf--(layout\\w+)")
-	foundStyles := rule.FindStringSubmatch(imageStyles)
+	foundImageLayout := mediumImageLayout.FindStringSubmatch(imageStyles)
 	mediumImageStyle = "layoutTextWidth"
-	if len(foundStyles) > 1 {
-		mediumImageStyle = foundStyles[1]
+	if len(foundImageLayout) > 1 {
+		mediumImageStyle = foundImageLayout[1]
 	}
 	if strings.HasPrefix(mediumImageStyle, "layoutOutsetRow") { // can also be layoutOutsetRowContinue
 		imagesInRow := figure.Parent().AttrOr("data-paragraph-count", "")
