@@ -380,13 +380,19 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 }
 
 func extractMediumImageStyle(imgDomElement *goquery.Selection) (mediumImageStyle string) {
-	imageStyles := imgDomElement.ParentsUntil("figure.graf").Parent().AttrOr("class", "")
+	figure := imgDomElement.ParentsUntil("figure.graf").Parent()
+	imageStyles := figure.AttrOr("class", "")
 	rule, _ := regexp.Compile("graf--(layout\\w+)")
 	foundStyles := rule.FindStringSubmatch(imageStyles)
-	mediumImageStyle = "layoutDefault"
+	mediumImageStyle = "layoutTextWidth"
 	if len(foundStyles) > 1 {
 		mediumImageStyle = foundStyles[1]
 	}
+	if strings.HasPrefix(mediumImageStyle, "layoutOutsetRow") { // can also be layoutOutsetRowContinue
+		imagesInRow := figure.Parent().AttrOr("data-paragraph-count", "")
+		mediumImageStyle += imagesInRow
+	}
+	
 	return
 }
 
