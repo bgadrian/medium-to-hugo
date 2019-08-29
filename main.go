@@ -323,7 +323,7 @@ func getTagsFor(url string) ([]string, error) {
 	}
 	var result []string
 	//fmt.Printf("%s", doc.Text())
-	doc.Find("ul.tags>li>a").Each(func(i int, selection *goquery.Selection) {
+	doc.Find("ul>li>a[href^='/tag']").Each(func(i int, selection *goquery.Selection) {
 		result = append(result, selection.Text())
 	})
 	return result, nil
