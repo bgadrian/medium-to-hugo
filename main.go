@@ -295,9 +295,10 @@ subtitle: "{{ .Subtitle }}"
 {{ if .Images }}images:
 {{ range .Images }} - "{{.}}"
 {{end}}{{end}}
-
+{{ if .Canonical }}
 aliases:
     - "/{{ .Canonical }}"
+{{end}}
 ---
 
 {{ .Body }}
