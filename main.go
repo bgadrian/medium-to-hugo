@@ -358,7 +358,11 @@ func fetchAndReplaceImages(doc *goquery.Document, folder, contentType, pageBundl
 			ext = ".jpg"
 		}
 		filename := fmt.Sprintf("%d%s", index, ext)
-		diskPath := fmt.Sprintf("%s%s", diskImagesFolder, filename)
+
+		// a '*' or '?' will fail as these are not typically valid in filenames
+		diskFilename := strings.Replace(filename, "*", "_", -1)
+		diskFilename = strings.Replace(diskFilename, "?", "_", -1)
+		diskPath := fmt.Sprintf("%s%s", diskImagesFolder, diskFilename)
 
 		err := DownloadFile(original, diskPath)
 		if err != nil {
